@@ -1,0 +1,8 @@
+node_modules/
+credentials.json
+cf_settings.json
+config.json
+models_cache.json
+debug_*.log
+*.log
+.env

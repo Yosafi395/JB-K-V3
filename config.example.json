@@ -1,0 +1,10 @@
+{
+  "port": 3000,
+  "api_key": "12345",
+  "batch_import_key": "",
+  "panel_password": "12345",
+  "grazie_agent": {
+    "name": "aia:idea",
+    "version": "261.22158.366:261.22158.277"
+  }
+}

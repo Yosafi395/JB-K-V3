@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JB AI Proxy</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>JB AI Proxy</h1>
+      <p class="subtitle">JetBrains AI 反向代理管理面板</p>
+    </header>
+
+    <section class="actions">
+      <button class="btn btn-primary" onclick="startOAuth()">添加账号</button>
+      <button class="btn btn-secondary" onclick="showManualForm()">手动导入</button>
+      <button class="btn btn-secondary" onclick="showBatchForm()">批量导入</button>
+      <button class="btn btn-secondary" onclick="showCfPanel()" style="border-color:#f59e0b;color:#f59e0b">CF 代理池</button>
+    </section>
+
+    <!-- CF 代理池（按钮正下方，点了直接看到） -->
+    <div id="cf-panel" class="card hidden" style="border-left:3px solid #f59e0b">
+      <h3 style="color:#f59e0b">Cloudflare Workers 代理池</h3>
+      <p class="step-hint" style="line-height:1.6">通过 CF Workers 分散 IP，批量导入时自动并发加速。部署后再点「批量导入」即可。</p>
+      <details style="margin:8px 0;font-size:12px;line-height:1.8">
+        <summary style="cursor:pointer;font-weight:bold;color:#f59e0b">如何获取 API Token 和 Account ID？</summary>
+        <div style="padding:8px;margin-top:4px;background:rgba(0,0,0,.03);border-radius:6px">
+          1. <a href="https://dash.cloudflare.com/sign-up" target="_blank">注册 Cloudflare</a>（用不重要的邮箱）<br>
+          2. Workers &amp; Pages &rarr; 右侧 <b>Account ID</b><br>
+          3. 头像 &rarr; My Profile &rarr; API Tokens &rarr; Create Token &rarr; <code>Edit Cloudflare Workers</code> 模板
+        </div>
+      </details>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <div style="flex:1"><label style="font-size:12px">API Token</label><br><input type="text" id="cfApiToken" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px" placeholder="cfut_xxx..."></div>
+        <div style="flex:1"><label style="font-size:12px">Account ID</label><br><input type="text" id="cfAccountId" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px" placeholder="afc66xxx..."></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="flex:0.3"><label style="font-size:12px">Workers 数量 <span style="color:#94a3b8;font-weight:normal">(1-20，每个=独立 IP 池)</span></label><br><input type="number" id="cfCount" value="5" min="1" max="20" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px"></div>
+        <div style="flex:0.7"><label style="font-size:12px">梯子代理（可选）</label><br><input type="text" id="cfLadder" placeholder="http://127.0.0.1:7890" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary" onclick="cfDeploy(this)" style="background:linear-gradient(135deg,#f59e0b,#ef4444);font-size:13px">保存并部署</button>
+        <button class="btn btn-secondary" onclick="cfHealth()" style="font-size:13px">检查状态</button>
+        <button class="btn btn-secondary" onclick="cfCleanup()" style="font-size:13px;border-color:#dc2626;color:#dc2626">删除 Workers</button>
+        <span id="cfBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;background:#e2e8f0;color:#64748b">未部署</span>
+      </div>
+      <p id="cfMsg" style="margin-top:8px;font-size:12px;color:#64748b"></p>
+    </div>
+
+    <!-- 批量导入（按钮正下方） -->
+    <div id="batch-form" class="card hidden">
+      <h3>批量导入账号</h3>
+      <p class="step-hint">支持多种格式自动检测：JSON 数组、email----password、空格/Tab/逗号/冒号分隔等。<br>只需要邮箱+密码，系统会自动登录获取凭证。如果已部署 CF 代理池，会自动并发加速。</p>
+      <form onsubmit="batchImport(event)">
+        <div class="form-group">
+          <label>账号数据</label>
+          <textarea id="batch-json" rows="8" required placeholder='支持以下格式（自动检测）：&#10;&#10;JSON: [{"email":"a@b.com","password":"xxx"}]&#10;分隔符: a@b.com----password&#10;空格: a@b.com password&#10;逗号: a@b.com,password&#10;Tab: a@b.com&#9;password' style="width:100%;font-family:monospace;font-size:12px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;resize:vertical"></textarea>
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="batch-dedupe" checked> 跳过已存在的邮箱（去重）</label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">导入</button>
+          <button type="button" class="btn btn-secondary" onclick="hideBatchForm()">取消</button>
+        </div>
+      </form>
+      <p id="batch-msg" style="margin-top:12px;font-size:13px"></p>
+    </div>
+
+    <!-- OAuth 登录 -->
+    <div id="oauth-form" class="card hidden">
+      <h3>第一步：<a id="oauth-url" class="step-link" href="#" target="_blank">点击此处前往 JetBrains 登录</a></h3>
+      <p class="step-hint">登录并授权后，浏览器会跳转到一个以 <code>http://localhost:...</code> 开头的地址。复制浏览器地址栏中的完整 URL。</p>
+      <h3>第二步：填写回调 URL 和 License ID</h3>
+      <form onsubmit="submitOAuthCallback(event)">
+        <div class="form-group">
+          <label>回调 URL</label>
+          <input type="text" id="oauth-callback" required placeholder="http://localhost:3000/?code=xxx&state=xxx">
+        </div>
+        <div class="form-group">
+          <label>License ID &mdash; 打开 <a href="https://account.jetbrains.com/licenses" target="_blank">account.jetbrains.com/licenses</a> 页面查看</label>
+          <input type="text" id="oauth-license" required placeholder="ULJX59IS80">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">提交</button>
+          <button type="button" class="btn btn-secondary" onclick="hideOAuthForm()">取消</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 手动导入 -->
+    <div id="manual-form" class="card hidden">
+      <h3>手动导入</h3>
+      <form onsubmit="addManual(event)">
+        <div class="form-group">
+          <label>Refresh Token</label>
+          <input type="text" id="manual-rt" required placeholder="uk0HfOcIf57KXgyd...">
+        </div>
+        <div class="form-group">
+          <label>License ID</label>
+          <input type="text" id="manual-lid" required placeholder="ULJX59IS80">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">添加</button>
+          <button type="button" class="btn btn-secondary" onclick="hideManualForm()">取消</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 顶部聚合统计（自动展示，不需要点按钮） -->
+    <section id="summary-card" class="card summary-card">
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="summary-label">总账号</div>
+          <div class="summary-value" id="sum-accounts">—</div>
+          <div class="summary-sub" id="sum-accounts-sub"></div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">总额度 (token)</div>
+          <div class="summary-value" id="sum-max">—</div>
+          <div class="summary-sub" id="sum-max-sub"></div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">已用</div>
+          <div class="summary-value" id="sum-used">—</div>
+          <div class="summary-sub" id="sum-used-sub"></div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">剩余</div>
+          <div class="summary-value" id="sum-remaining" style="color:#16a34a">—</div>
+          <div class="summary-sub" id="sum-remaining-sub"></div>
+        </div>
+      </div>
+      <div class="quota-bar summary-bar"><div class="quota-fill" id="sum-bar" style="width:0%"></div></div>
+      <div class="summary-foot">
+        <span id="sum-status" class="muted">尚未加载</span>
+        <button class="btn-sm" onclick="loadQuotaSummary(true)">立即重新探测全部配额</button>
+      </div>
+    </section>
+
+    <!-- 账号列表 -->
+    <section class="card">
+      <h2>账号列表 <button class="btn-sm" onclick="loadAccounts()">刷新</button></h2>
+      <div id="accounts-list">
+        <p class="muted">加载中...</p>
+      </div>
+    </section>
+
+    <!-- 模型管理 -->
+    <section class="card">
+      <h2>模型列表</h2>
+      <p class="step-hint" style="line-height:1.6">
+        <code>/v1/models</code> 返回的模型列表来自本地缓存，不会在每次启动时拉取上游。
+        <br>JB 上线新模型后，点「同步上游模型」从 JetBrains 拉一次。
+        <br>同步后会自动膨胀出思考强度变体：
+        <br><b>Claude / Grok 系</b>（无原生 thinking 支持）→ <code>-thinking</code> / <code>-maxthinking</code>（system prompt 注入）
+        <br><b>GPT-5 / o-系</b>（原生 reasoning-effort）→ <code>-low</code> / <code>-medium</code> / <code>-high</code>
+        <br><b>Gemini 2.5/3.x</b>（原生 thinking-budget）→ <code>-thinking</code>(8K) / <code>-maxthinking</code>(24K)
+      </p>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+        <button class="btn btn-primary" onclick="syncModels(this)">同步上游模型</button>
+        <span id="syncBadge" style="font-size:12px;color:#64748b">加载中...</span>
+      </div>
+      <p id="syncMsg" style="margin-top:8px;font-size:12px;color:#64748b"></p>
+    </section>
+
+    <!-- 接口信息 -->
+    <section class="card">
+      <h2>接口地址</h2>
+      <table class="endpoint-table">
+        <tr><td><code>POST /v1/chat/completions</code></td><td>OpenAI 兼容</td></tr>
+        <tr><td><code>POST /v1/messages</code></td><td>Anthropic 兼容</td></tr>
+        <tr><td><code>GET /v1/models</code></td><td>模型列表（含思考强度变体）</td></tr>
+      </table>
+    </section>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

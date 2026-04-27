@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JB AI Proxy - 登录</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container" style="display:flex;justify-content:center;align-items:center;min-height:80vh">
+    <div class="card" style="max-width:360px;width:100%">
+      <h2 style="margin-bottom:20px;text-align:center">JB AI Proxy</h2>
+      <form onsubmit="login(event)">
+        <div class="form-group">
+          <label>管理密码</label>
+          <input type="password" id="pwd" required placeholder="请输入密码" autofocus>
+        </div>
+        <button type="submit" class="btn btn-primary" id="btn" style="width:100%">登录</button>
+        <p id="msg" style="margin-top:10px;font-size:13px;color:#dc2626;text-align:center"></p>
+      </form>
+    </div>
+  </div>
+  <script>
+    async function login(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn');
+      const msg = document.getElementById('msg');
+      btn.disabled = true; btn.textContent = '登录中...';
+      try {
+        const res = await fetch('/api/panel/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: document.getElementById('pwd').value })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        location.href = '/panel';
+      } catch (err) {
+        msg.textContent = err.message;
+        btn.disabled = false; btn.textContent = '登录';
+      }
+    }
+  </script>
+</body>
+</html>
